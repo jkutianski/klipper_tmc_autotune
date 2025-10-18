@@ -45,17 +45,21 @@ Your driver configurations should contain:
 
 The Klipper documentation recommends not using interpolation. However, that is most applicable if using low microstep counts, and using the default driver configuration. Autotune gives better results, both dimensionally and quality, by using interpolation and as many microsteps as feasible.
 
-Check the pinouts of your stepper driver boards: BTT TMC 2240 boards require configuring `diag1_pin` not `diag0_pin`, but MKS TMC 2240 stepsticks require `diag0_pin` and *not* `diag1_pin`. There may be other unusual drivers.
+Check the pinouts of your stepper driver boards, as there might be unusual boards out there. Known setups:
+  - BTT TMC 2240 stepsticks use `diag0_pin`.
+  - BTT TMC 5160 stepsticks use `diag1_pin`.
+  - MKS TMC 2240 stepsticks use `diag0_pin`.
 
 ## Sensorless homing
 
 Autotune can be used together with homing overrides for sensorless homing. However, you must adjust the `sg4_thrs` (TMC2209, TMC2260) and/or `sgt` (TMC5160, TMC2240, TMC2130, TMC2660) values specifically in the autotune sections. Attempting to make these changes via gcode or via the tmc driver sections will not result in an error message, but will have no effect since the autotuning algorithm will simply override them.
 
-Also note that the sensorless homing tuning will most likely change due to the other settings. In particular, autotune may require faster homing speeds to work; take the `rotation_distance` of the stepper as a minimum speed that can work, and if it is hard to tune home faster. Sensorless homing becomes much more sensitive at higher speeds.
+Also, note that the sensorless homing tuning may be affected by other settings. In particular, autotune might require faster homing speeds for sensorless homing to function effectively. As a minimum speed that can work, consider the `rotation_distance` of the stepper. If tuning proves challenging, increase the homing speed since sensorless homing becomes much more sensitive at higher speeds. For instance, with a `rotation_distance` of 40, suitable starting homing speeds are 40-60mm/s for TMC2209/TMC2260 drivers and 80-100mm/s for TMC2130/TMC2240/TMC2660/TMC5160 drivers.
 
 ## Autotune configuration
 
-Add the following to your `printer.cfg` (change motor names and remove or add any sections as needed) to enable the autotuning for your TMC drivers and motors and restart Klipper:
+Add the following to your `printer.cfg` (change motor names and remove or add any sections as needed) to enable the autotuning for your TMC drivers and motors and restart Klipper. You can also use the [example.cfg](./docs/example.cfg) as a template.
+
 ```ini
 [autotune_tmc stepper_x]
 motor: ldo-42sth48-2004mah
@@ -86,6 +90,11 @@ All the `[autotune_tmc]` sections accept additional parameters to tweak the beha
 | toff | 0 | 0 to 15 | Sets the slow decay time (off time) of the chopper cycle. This setting also limits the maximum chopper frequency. When set to 0, the value is automatically computed by this autotuning algorithm. Highest motor velocities sometimes benefit from forcing `toff` to 1 or 2 and a setting a short `tbl` of 1 or 0 |
 | sgt | 1 | -64 to 63 | Sensorless homing threshold for TMC5160, TMC2240, TMC2130, TMC2660. Set value appropriately if using sensorless homing (lower value means more sensitive detection and easier stall) |
 | sg4_thrs | 10 | 0 to 255 | Sensorless homing threshold for TMC2209 and TMC2260. Set value appropriately if using sensorless homing (higher value means more sensitive detection and easier stall). This parameter is also used as the CoolStep current regulation threshold for TMC2209, TMC2240 and TMC5160. A default value of 80 is usually a good starting point for CoolStep (in the case of TMC2209, the tuned sensorless homing value will also work correctly) |
+| semin | 2 | 0 to 15 | **Coolstep**: Lower StallGuard threshold for increasing the current to the motor coils. When set to 0 CoolStep is disabled. |
+| semax | 4 | 0 to 15 | **Coolstep**: Upper StallGuard threshold for decreasing the current to the motor coils. |
+| seup | 3 | 0 to 3 | **Coolstep**: Sets the current increment step. The motor current becomes incremented based on this setting whenever a new StallGuard value is measured that lies below the lower threshold |
+| sedn | 2 | 0 to 3 | **Coolstep**: Sets the number of StallGuard readings above the upper threshold necessary for each current decrement of the motor current. |
+| seimin | 1 | 0 to 1 | **Coolstep**: Sets the lower motor current limit for CoolStep operation by scaling the run current. 0 = 50%, 1 = 25% of run current. |
 | pwm_freq_target | 55e3 | 10e3 to 60e3 | Switching frequency target, in Hz. The code selects the highest available PWM switching frequency less than or equal to this. The default usually results in 48 kHz switching. |
 | voltage | 24 | 0.0 to 60.0 | Voltage used to power this motor and stepper driver |
 | overvoltage_vth |  | 0.0 to 60.0 | Set the optional overvoltage snubber built into the TMC2240 and TMC5160. Users of the BTT SB2240 toolhead board should use it for the extruder by reading the actual toolhead voltage and adding 0.8V |
@@ -94,7 +103,6 @@ Also if needed, you can adjust everything on the go when the printer is running 
 ```
 AUTOTUNE_TMC STEPPER=<name> [PARAMETER=<value>]
 ```
-
 
 ## User-defined motors
 
@@ -114,6 +122,32 @@ steps_per_revolution: 200
 ```
 
 Note that lead screw motors very often do not have a published torque. Use an online calculator to estimate the torque from the lead screw thrust, for example https://www.dingsmotionusa.com/torque-calculator.
+
+
+## How do I now tuning was applied?
+
+Autotune logs all the settings it applies to the Klipper logfile (`klippy.log`), if autotune is correctly configured you should see lines similar to the following on printer startup:
+
+```text
+autotune_tmc set stepper_x pwm_freq=2
+autotune_tmc set stepper_y pwm_freq=2
+autotune_tmc set stepper_z pwm_freq=0
+autotune_tmc set stepper_z1 pwm_freq=0
+autotune_tmc set stepper_z2 pwm_freq=0
+autotune_tmc set extruder pwm_freq=0
+autotune_tmc stepper_x ncycles=219 pfdcycles=73
+autotune_tmc set stepper_x tpfd=1
+autotune_tmc stepper_y ncycles=219 pfdcycles=73
+autotune_tmc set stepper_y tpfd=1
+autotune_tmc stepper_z ncycles=625 pfdcycles=223
+autotune_tmc set stepper_z tpfd=2
+autotune_tmc stepper_z1 ncycles=625 pfdcycles=223
+autotune_tmc set stepper_z1 tpfd=2
+autotune_tmc stepper_z2 ncycles=625 pfdcycles=223
+autotune_tmc set stepper_z2 tpfd=2
+autotune_tmc extruder ncycles=625 pfdcycles=223
+...
+```
 
 
 ## Removing this Klipper extension

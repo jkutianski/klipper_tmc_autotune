@@ -16,30 +16,46 @@ export LC_ALL=C
 function preflight_checks {
     if [ "$EUID" -eq 0 ]; then
         echo "[PRE-CHECK] This script must not be run as root!"
-        exit -1
+        exit 1
     fi
 
-    if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F 'klipper.service')" ]; then
-        printf "[PRE-CHECK] Klipper service found! Continuing...\n\n"
+    if sudo systemctl list-units --full -all -t service --no-legend | grep -q 'klipper.service'; then
+        echo "[PRE-CHECK] Klipper service found!"
     else
         echo "[ERROR] Klipper service not found, please install Klipper first!"
-        exit -1
+        exit 1
     fi
+
+    # Try to determine the klippy virtual environment from the local Moonraker instance
+    KLIPPY_PYTHON_PATH=$(wget -qO- http://localhost:7125/printer/info | python -c 'import sys, json; print(json.load(sys.stdin)["result"]["python_path"])' 2>/dev/null || true)
+    # Fall back to the default location
+    KLIPPY_PYTHON_PATH=${KLIPPY_PYTHON_PATH:-"${HOME}/klippy-env/bin/python"}
+    # Get the major Python version
+    KLIPPY_PYTHON_VERSION=$("${KLIPPY_PYTHON_PATH}" -c 'import sys; print(sys.version_info.major)')
+
+    if [[ ${KLIPPY_PYTHON_VERSION} -lt 3 ]]; then
+        echo "[ERROR] Klipper must be using Python 3 - detected outdated Python 2"
+        exit 1
+    else
+        echo "[PRE-CHECK] Klipper is using Python 3!"
+    fi
+
+    printf "\n\n"
 }
 
 function check_download {
     local autotunedirname autotunebasename
-    autotunedirname="$(dirname ${AUTOTUNETMC_PATH})"
-    autotunebasename="$(basename ${AUTOTUNETMC_PATH})"
+    autotunedirname="$(dirname "${AUTOTUNETMC_PATH}")"
+    autotunebasename="$(basename "${AUTOTUNETMC_PATH}")"
 
     if [ ! -d "${AUTOTUNETMC_PATH}" ]; then
         echo "[DOWNLOAD] Downloading Autotune TMC repository..."
-        if git -C $autotunedirname clone https://github.com/andrewmcgr/klipper_tmc_autotune.git $autotunebasename; then
-            chmod +x ${AUTOTUNETMC_PATH}/install.sh
+        if git -C "${autotunedirname}" clone https://github.com/andrewmcgr/klipper_tmc_autotune.git $autotunebasename; then
+            chmod +x "${AUTOTUNETMC_PATH}"/install.sh
             printf "[DOWNLOAD] Download complete!\n\n"
         else
             echo "[ERROR] Download of Autotune TMC git repository failed!"
-            exit -1
+            exit 1
         fi
     else
         printf "[DOWNLOAD] Autotune TMC repository already found locally. Continuing...\n\n"

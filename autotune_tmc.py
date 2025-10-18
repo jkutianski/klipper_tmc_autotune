@@ -116,7 +116,6 @@ class AutotuneTMC:
         self.auto_silent = False # Auto silent off by default
         self.tmc_object=None # look this up at connect time
         self.tmc_cmdhelper=None # Ditto
-        self.tmc_init_registers=None # Ditto
         self.run_current = 0.0
         self.fclk = None
         self.motor_object = None
@@ -127,6 +126,13 @@ class AutotuneTMC:
         self.tpfd = config.getint('tpfd', default=None, minval=0, maxval=15)
         self.sgt = config.getint('sgt', default=SGT, minval=-64, maxval=63)
         self.sg4_thrs = config.getint('sg4_thrs', default=SG4_THRS, minval=0, maxval=255)
+        # Coolstep Tunables
+        self.se_min = config.getint("semin", default=SEMIN, minval=0, maxval=15)
+        self.se_max = config.getint("semax", default=SEMAX, minval=0, maxval=15)
+        self.se_up = config.getint("seup", default=SEUP, minval=0, maxval=3)
+        self.se_down = config.getint("sedn", default=SEDN, minval=0, maxval=3)
+        self.se_imin = config.getint("seimin", default=SEIMIN, minval=0, maxval=1)
+
         self.voltage = config.getfloat('voltage', default=VOLTAGE, minval=0.0, maxval=60.0)
         self.overvoltage_vth = config.getfloat('overvoltage_vth', default=OVERVOLTAGE_VTH,
                                               minval=0.0, maxval=60.0)
@@ -167,8 +173,6 @@ class AutotuneTMC:
       self.printer.reactor.register_callback(self._handle_ready_deferred)
 
     def _handle_ready_deferred(self, eventtime):
-        if self.tmc_init_registers is not None:
-            self.tmc_init_registers(print_time=print_time)
         try:
             self.fclk = self.tmc_object.mcu_tmc.get_tmc_frequency()
         except AttributeError:
@@ -344,6 +348,11 @@ class AutotuneTMC:
         self._set_driver_field('pwm_reg', PWM_REG)
         self._set_driver_field('pwm_lim', PWM_LIM)
         if tgoal == TuningGoal.AUTOSWITCH:
+            logging.info(
+                "autotune_tmc set %s autoswitch velocity limit to %.3f",
+                self.name,
+                pwmthrs,
+            )
             self._set_driver_velocity_field('tpwmthrs', pwmthrs)
             self._set_driver_field('en_pwm_mode', True)
             self._set_driver_field('en_spreadcycle', False) # TMC2208 use en_spreadcycle instead of en_pwm_mode
@@ -385,11 +394,11 @@ class AutotuneTMC:
         self._set_driver_field('sgt', self.sgt)
         self._set_driver_field('fast_standstill', FAST_STANDSTILL)
         self._set_driver_field('small_hysteresis', SMALL_HYSTERESIS)
-        self._set_driver_field('semin', SEMIN)
-        self._set_driver_field('semax', SEMAX)
-        self._set_driver_field('seup', SEUP)
-        self._set_driver_field('sedn', SEDN)
-        self._set_driver_field('seimin', SEIMIN)
+        self._set_driver_field("semin", self.se_min)
+        self._set_driver_field("semax", self.se_max)
+        self._set_driver_field("seup", self.se_up)
+        self._set_driver_field("sedn", self.se_down)
+        self._set_driver_field("seimin", self.se_imin)
         self._set_driver_field('sfilt', SFILT)
         self._set_driver_field('iholddelay', IHOLDDELAY)
         self._set_driver_field('irundelay', IRUNDELAY)
